@@ -4180,6 +4180,11 @@ namespace Soulseek
                 download.Connection.DataRead += (sender, e) => UpdateProgress(download.StartOffset + e.CurrentLength);
                 download.Connection.Disconnected += (sender, e) =>
                 {
+                    if (e.Exception is null)
+                    {
+                        return;
+                    }
+
                     if (e.Exception is OperationCanceledException || e.Exception is TimeoutException)
                     {
                         disconnectedTaskCancellationSource.TrySetException(e.Exception);
@@ -5762,6 +5767,11 @@ namespace Soulseek
                 upload.Connection.DataWritten += (sender, e) => UpdateProgress(upload.StartOffset + e.CurrentLength);
                 upload.Connection.Disconnected += (sender, e) =>
                 {
+                    if (e.Exception is null)
+                    {
+                        return;
+                    }
+
                     if (e.Exception is OperationCanceledException || e.Exception is TimeoutException)
                     {
                         disconnectedTaskCancellationSource.TrySetException(e.Exception);
