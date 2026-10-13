@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   dotnet:
-    runs-on: [self-hosted, Windows, X64, packer-windows]
+    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","Windows","X64","packer-windows"]') || 'windows-latest' }}
     steps:
       - uses: actions/checkout@v6
 
