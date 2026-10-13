@@ -16,7 +16,7 @@ jobs:
   dotnet:
     runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","Windows","X64","packer-windows"]') || 'windows-latest' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v5
         with:
