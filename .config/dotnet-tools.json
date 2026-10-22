@@ -3,7 +3,7 @@
   "isRoot": true,
   "tools": {
     "dotnet-affected": {
-      "version": "6.2.0",
+      "version": "7.0.1",
       "commands": [
         "dotnet-affected"
       ],
