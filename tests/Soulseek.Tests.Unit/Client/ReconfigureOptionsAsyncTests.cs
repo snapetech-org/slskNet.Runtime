@@ -83,6 +83,57 @@ namespace Soulseek.Tests.Unit.Client
         }
 
         [Trait("Category", "ReconfigureOptions")]
+        [Fact(DisplayName = "Uses PrimaryListenerTcpListenerOverride instead of binding a real socket when set")]
+        public async Task Uses_PrimaryListenerTcpListenerOverride_Instead_Of_Binding_A_Real_Socket_When_Set()
+        {
+            var port = GetAvailablePort();
+
+            // Change something that forces the listener to be rebuilt (peer obfuscation options)
+            // WITHOUT changing the listen address or port, so the earlier, un-overridden real-port
+            // probe in ReconfigureOptionsAsync (which only runs when the address/port changes) is
+            // not exercised -- this isolates the internal reconstruction path that
+            // PrimaryListenerTcpListenerOverride actually affects.
+            var (client, mocks) = GetFixture(new SoulseekClientOptions(
+                enableListener: true,
+                listenPort: port,
+                peerObfuscationOptions: new PeerObfuscationOptions(enabled: false)));
+
+            mocks.Listener.Setup(m => m.Listening).Returns(true);
+
+            var patch = new SoulseekClientOptionsPatch(
+                peerObfuscationOptions: new PeerObfuscationOptions(enabled: true, listenPort: 0));
+
+            Listener occupyingListener = null;
+
+            try
+            {
+                // Occupy the port for real. Without the override, rebuilding the listener on this
+                // port throws ListenException (see the preceding test's scenario); with it, the
+                // vendored Listener never attempts a real bind, so no conflict occurs.
+                occupyingListener = new Listener(IPAddress.Any, port, new ConnectionOptions());
+                occupyingListener.Start();
+
+                var overrideTcpListener = new Mock<ITcpListener>();
+                overrideTcpListener.Setup(m => m.AcceptTcpClientAsync()).Returns(new TaskCompletionSource<TcpClient>().Task);
+                client.PrimaryListenerTcpListenerOverride = overrideTcpListener.Object;
+
+                using (client)
+                {
+                    var ex = await Record.ExceptionAsync(() => client.ReconfigureOptionsAsync(patch));
+
+                    Assert.Null(ex);
+                    Assert.Equal(port, client.Listener.Port);
+                }
+
+                overrideTcpListener.Verify(m => m.Start(It.IsAny<int>()), Times.AtLeastOnce);
+            }
+            finally
+            {
+                occupyingListener?.Stop();
+            }
+        }
+
+        [Trait("Category", "ReconfigureOptions")]
         [Fact(DisplayName = "Does not throw given empty patch")]
         public async Task Does_Not_Throw_Given_Empty_Patch()
         {
@@ -331,12 +382,12 @@ namespace Soulseek.Tests.Unit.Client
             using (client)
             {
                 client.SetProperty("State", SoulseekClientStates.Connected | SoulseekClientStates.LoggedIn);
-                var ogListener = client.Listener;
+                var originalListener = client.Listener;
 
                 await client.ReconfigureOptionsAsync(patch);
 
                 Assert.Equal(patch.ListenBacklog, client.Options.ListenBacklog);
-                Assert.NotEqual(ogListener, client.Listener);
+                Assert.NotEqual(originalListener, client.Listener);
             }
         }
 
@@ -357,7 +408,6 @@ namespace Soulseek.Tests.Unit.Client
                 await client.ReconfigureOptionsAsync(patch);
 
                 Assert.Equal(mocks.Listener.Object, client.Listener);
-
                 mocks.Listener.Verify(m => m.Start(It.IsAny<int>()), Times.Never);
             }
         }
@@ -367,23 +417,64 @@ namespace Soulseek.Tests.Unit.Client
         public async Task Assigns_A_Handler_To_Listener_Error_When_A_New_Listener_Is_Created()
         {
             var (client, mocks) = GetFixture(new SoulseekClientOptions(listenPort: GetAvailablePort()));
-
             mocks.Listener.Setup(m => m.Listening).Returns(true);
-
             var patch = new SoulseekClientOptionsPatch(listenPort: GetAvailablePort());
 
             using (client)
             {
                 client.SetProperty("State", SoulseekClientStates.Connected | SoulseekClientStates.LoggedIn);
-
                 await client.ReconfigureOptionsAsync(patch);
 
                 Assert.NotNull(client.Listener);
-
                 var raisedException = new Exception("error raised for test");
                 client.Listener.RaiseEvent(typeof(Listener), "Error", raisedException);
-
                 mocks.ListenerHandler.Verify(m => m.HandleError(client.Listener, raisedException), Times.Once);
+            }
+        }
+
+        [Trait("Category", "ReconfigureOptions")]
+        [Fact(DisplayName = "Reconfigures obfuscated listener and metadata if listen ports changed")]
+        public async Task Reconfigures_Obfuscated_Listener_And_Metadata_If_Listen_Ports_Changed()
+        {
+            var regularPort = GetAvailablePort();
+            var oldObfuscatedPort = GetAvailablePort();
+            while (oldObfuscatedPort == regularPort)
+            {
+                oldObfuscatedPort = GetAvailablePort();
+            }
+
+            var newRegularPort = GetAvailablePort();
+            while (newRegularPort == regularPort || newRegularPort == oldObfuscatedPort)
+            {
+                newRegularPort = GetAvailablePort();
+            }
+
+            var newObfuscatedPort = GetAvailablePort();
+            while (newObfuscatedPort == regularPort || newObfuscatedPort == oldObfuscatedPort || newObfuscatedPort == newRegularPort)
+            {
+                newObfuscatedPort = GetAvailablePort();
+            }
+
+            var oldObfuscation = new PeerObfuscationOptions(enabled: true, listenPort: oldObfuscatedPort);
+            var newObfuscation = new PeerObfuscationOptions(enabled: true, listenPort: newObfuscatedPort, preferOutbound: true);
+            var (client, mocks) = GetFixture(new SoulseekClientOptions(
+                listenPort: regularPort,
+                peerObfuscationOptions: oldObfuscation));
+
+            mocks.Listener.Setup(m => m.Listening).Returns(true);
+            var patch = new SoulseekClientOptionsPatch(
+                listenPort: newRegularPort,
+                peerObfuscationOptions: newObfuscation);
+
+            using (client)
+            {
+                client.SetProperty("State", SoulseekClientStates.Connected | SoulseekClientStates.LoggedIn);
+                await client.ReconfigureOptionsAsync(patch);
+
+                Assert.Equal(newRegularPort, client.Listener.Port);
+                Assert.NotNull(client.ObfuscatedListener);
+                Assert.Equal(newObfuscatedPort, client.ObfuscatedListener.Port);
+                Assert.Same(newObfuscation, client.Options.PeerObfuscationOptions);
             }
         }
 

@@ -22,6 +22,7 @@
 //
 //     Modified by slskdN Team.
 //     Modified: Added type-1 obfuscated peer-message init handling.
+//     Modified: Added per-connection obfuscation sniffing for shared single-port listeners.
 // </copyright>
 
 namespace Soulseek.Network
@@ -65,8 +66,10 @@ namespace Soulseek.Network
         /// </summary>
         /// <param name="sender">The originating <see cref="IListener"/> instance.</param>
         /// <param name="connection">The accepted connection.</param>
-        public async void HandleConnection(object sender, IConnection connection)
-            => await HandleConnectionAsync(sender, connection).ConfigureAwait(false);
+        // EventHandler cannot await this asynchronous path; explicitly observe the task so a
+        // malformed peer frame cannot surface later as an unobserved task exception.
+        public void HandleConnection(object sender, IConnection connection)
+            => HandleConnectionAsync(sender, connection).Forget();
 
         public void HandleError(object sender, Exception exception)
         {
@@ -85,7 +88,8 @@ namespace Soulseek.Network
                 var listener = sender as IListener;
                 var listenerPort = listener?.Port ?? SoulseekClient.Listener?.Port ?? 0;
                 var listenerAddress = listener?.IPAddress ?? SoulseekClient.Listener?.IPAddress;
-                var obfuscated = listener?.Obfuscated == true;
+                var sniffObfuscation = listener?.ObfuscationSniffingEnabled == true;
+                var obfuscated = !sniffObfuscation && listener?.Obfuscated == true;
                 if (obfuscated)
                 {
                     connection.MarkObfuscated();
@@ -95,12 +99,60 @@ namespace Soulseek.Network
 
                 byte[] message;
 
-                if (obfuscated)
+                if (sniffObfuscation)
+                {
+                    // this listener's single bound port is shared by plain and type-1 obfuscated connections. peek at the
+                    // frame by reading the first four bytes once (IConnection.ReadAsync only supports forward reads, so these
+                    // bytes cannot be "put back") and testing whether they form a plausible plain init frame length. if so,
+                    // treat the connection as plain and reuse those bytes as the length prefix; otherwise, treat them as the
+                    // first four bytes of the eight-byte obfuscated header and read the remaining four to complete it.
+                    var firstFour = await connection.ReadAsync(4).ConfigureAwait(false);
+                    var candidateLength = BitConverter.ToInt32(firstFour, 0);
+
+                    if (MessageFrameValidator.IsValidInitMessageLength(candidateLength))
+                    {
+                        obfuscated = false;
+
+                        var bodyBytes = await connection.ReadAsync(candidateLength).ConfigureAwait(false);
+                        message = firstFour.Concat(bodyBytes).ToArray();
+                    }
+                    else
+                    {
+                        obfuscated = true;
+                        connection.MarkObfuscated();
+
+                        var remainingHeaderBytes = await connection.ReadAsync(4).ConfigureAwait(false);
+                        var firstBlock = firstFour.Concat(remainingHeaderBytes).ToArray();
+                        var decodedFirstBlock = RotatedObfuscation.Decode(firstBlock);
+                        var length = BinaryPrimitives.ReadInt32LittleEndian(decodedFirstBlock);
+                        if (!MessageFrameValidator.IsValidInitMessageLength(length))
+                        {
+                            RejectConnection(connection, CreateInvalidInitMessageException(length, "obfuscated initialization message"));
+                            return;
+                        }
+
+                        var obfuscatedMessage = new byte[8 + length];
+                        Buffer.BlockCopy(firstBlock, 0, obfuscatedMessage, 0, firstBlock.Length);
+
+                        if (length > 0)
+                        {
+                            var remainingBytes = await connection.ReadAsync(length).ConfigureAwait(false);
+                            Buffer.BlockCopy(remainingBytes, 0, obfuscatedMessage, 8, remainingBytes.Length);
+                        }
+
+                        message = RotatedObfuscation.Decode(obfuscatedMessage);
+                    }
+                }
+                else if (obfuscated)
                 {
                     var firstBlock = await connection.ReadAsync(8).ConfigureAwait(false);
                     var decodedFirstBlock = RotatedObfuscation.Decode(firstBlock);
                     var length = BinaryPrimitives.ReadInt32LittleEndian(decodedFirstBlock);
-                    ValidateObfuscatedMessageLength(length);
+                    if (!MessageFrameValidator.IsValidInitMessageLength(length))
+                    {
+                        RejectConnection(connection, CreateInvalidInitMessageException(length, "obfuscated initialization message"));
+                        return;
+                    }
 
                     var obfuscatedMessage = new byte[8 + length];
                     Buffer.BlockCopy(firstBlock, 0, obfuscatedMessage, 0, firstBlock.Length);
@@ -117,7 +169,11 @@ namespace Soulseek.Network
                 {
                     var lengthBytes = await connection.ReadAsync(4).ConfigureAwait(false);
                     var length = BitConverter.ToInt32(lengthBytes, 0);
-                    MessageFrameValidator.ValidateInitMessageLength(length);
+                    if (!MessageFrameValidator.IsValidInitMessageLength(length))
+                    {
+                        RejectConnection(connection, CreateInvalidInitMessageException(length, "initialization message"));
+                        return;
+                    }
 
                     var bodyBytes = await connection.ReadAsync(length).ConfigureAwait(false);
                     message = lengthBytes.Concat(bodyBytes).ToArray();
@@ -247,9 +303,14 @@ namespace Soulseek.Network
             }
             catch (Exception ex)
             {
-                Diagnostic.Debug($"Failed to initialize direct connection from {GetConnectionDescription(connection)}: {ex.Message}");
-                DisconnectAndDispose(connection, ex);
+                RejectConnection(connection, ex);
             }
+        }
+
+        private void RejectConnection(IConnection connection, Exception exception)
+        {
+            Diagnostic.Debug($"Failed to initialize direct connection from {GetConnectionDescription(connection)}: {exception.Message}");
+            DisconnectAndDispose(connection, exception);
         }
 
         private static void DisconnectAndDispose(IConnection connection, Exception exception)
@@ -261,7 +322,9 @@ namespace Soulseek.Network
 
             try
             {
-                connection.Disconnect(exception: exception);
+                // Incoming listener connections are unsolicited and have no caller awaiting
+                // WaitForDisconnect; preserve the reason without faulting that completion source.
+                connection.Disconnect(message: exception?.Message);
             }
             catch (Exception)
             {
@@ -295,9 +358,7 @@ namespace Soulseek.Network
             }
         }
 
-        private static void ValidateObfuscatedMessageLength(int length)
-        {
-            MessageFrameValidator.ValidateInitMessageLength(length, "obfuscated initialization message");
-        }
+        private static MessageReadException CreateInvalidInitMessageException(int length, string frameName)
+            => new MessageReadException($"Invalid {frameName} length: {length}");
     }
 }

@@ -621,6 +621,15 @@ namespace Soulseek
         internal virtual ConcurrentDictionary<int, TransferInternal> DownloadDictionary { get; set; } = new ConcurrentDictionary<int, TransferInternal>();
         internal virtual IListener Listener { get; private set; }
         internal virtual IListener ObfuscatedListener { get; private set; }
+
+        /// <summary>
+        ///     Gets or sets the <see cref="ITcpListener"/> override for the primary listener. When set (by an
+        ///     internals-visible caller, e.g. slskd) before the primary listener is constructed, the primary
+        ///     <see cref="Listener"/> uses this <see cref="ITcpListener"/> instead of binding its own socket. Used to let the
+        ///     Soulseek peer listener share a single public TCP port with other application-level protocols via an
+        ///     externally-owned accept loop that classifies and feeds connections in.
+        /// </summary>
+        internal ITcpListener PrimaryListenerTcpListenerOverride { get; set; }
         internal virtual IListenerHandler ListenerHandler { get; }
         internal virtual IPeerConnectionManager PeerConnectionManager { get; }
         internal virtual IPeerMessageHandler PeerMessageHandler { get; }
@@ -1000,19 +1009,33 @@ namespace Soulseek
                 Listener obfuscatedListener = null;
 
                 // probe to see if we can listen on the configured port and address. if this throws, something is either already
-                // listening on this port, or the user has specified a bad interface IP
+                // listening on this port, or the user has specified a bad interface IP. when PrimaryListenerTcpListenerOverride
+                // is set, the real public socket is owned externally (e.g. a shared TCP demux), so this probe is a no-op by
+                // construction rather than a real bind attempt.
                 try
                 {
-                    listener = new Listener(Options.ListenIPAddress, Options.ListenPort, Options.IncomingConnectionOptions);
-                    listener.Start(Options.ListenBacklog);
+                    if (PrimaryListenerTcpListenerOverride == null)
+                    {
+                        var sharedObfuscation = Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort == 0;
+                        listener = new Listener(
+                            Options.ListenIPAddress,
+                            Options.ListenPort,
+                            Options.IncomingConnectionOptions,
+                            obfuscationSniffingEnabled: sharedObfuscation,
+                            diagnosticFactory: Diagnostic);
+                        listener.Start(Options.ListenBacklog);
+                    }
 
-                    if (Options.PeerObfuscationOptions.Enabled)
+                    // a dedicated obfuscation listen port of 0 means obfuscated connections share the regular listener's
+                    // single bound port (distinguished per-connection instead), so there is no second port to probe here.
+                    if (Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort != 0)
                     {
                         obfuscatedListener = new Listener(
                             Options.ListenIPAddress,
                             Options.PeerObfuscationOptions.ListenPort,
                             Options.IncomingConnectionOptions,
-                            obfuscated: true);
+                            obfuscated: true,
+                            diagnosticFactory: Diagnostic);
                         obfuscatedListener.Start(Options.ListenBacklog);
                     }
                 }
@@ -2486,7 +2509,9 @@ namespace Soulseek
 
             // if the listen address or port is changing, probe to see if we can listen on the new address/port if not, reject the
             // reconfigure attempt
-            if ((patch.ListenIPAddress != null && !patch.ListenIPAddress.Equals(Options.ListenIPAddress)) || (patch.ListenPort.HasValue && patch.ListenPort != Options.ListenPort))
+            if (PrimaryListenerTcpListenerOverride == null &&
+                ((patch.ListenIPAddress != null && !patch.ListenIPAddress.Equals(Options.ListenIPAddress)) ||
+                 (patch.ListenPort.HasValue && patch.ListenPort != Options.ListenPort)))
             {
                 Listener listener = null;
                 var newAddress = patch.ListenIPAddress ?? Options.ListenIPAddress;
@@ -2494,7 +2519,7 @@ namespace Soulseek
 
                 try
                 {
-                    listener = new Listener(newAddress, newPort, Options.IncomingConnectionOptions);
+                    listener = new Listener(newAddress, newPort, Options.IncomingConnectionOptions, diagnosticFactory: Diagnostic);
                     listener.Start();
                 }
                 catch (Exception)
@@ -3788,18 +3813,30 @@ namespace Soulseek
 
                     if (Options.EnableListener)
                     {
-                        Listener = new Listener(Options.ListenIPAddress, Options.ListenPort, connectionOptions: Options.IncomingConnectionOptions);
+                        // a dedicated obfuscation listen port of 0 means obfuscated connections share the regular
+                        // listener's single bound port; the shared listener determines plain-vs-obfuscated per
+                        // connection instead of a second listener with a static obfuscated flag.
+                        var sharedObfuscation = Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort == 0;
+
+                        Listener = new Listener(
+                            Options.ListenIPAddress,
+                            Options.ListenPort,
+                            connectionOptions: Options.IncomingConnectionOptions,
+                            tcpListener: PrimaryListenerTcpListenerOverride,
+                            obfuscationSniffingEnabled: sharedObfuscation,
+                            diagnosticFactory: Diagnostic);
                         Listener.Accepted += ListenerHandler.HandleConnection;
                         Listener.Error += ListenerHandler.HandleError;
                         Listener.Start(Options.ListenBacklog);
 
-                        if (Options.PeerObfuscationOptions.Enabled)
+                        if (Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort != 0)
                         {
                             ObfuscatedListener = new Listener(
                                 Options.ListenIPAddress,
                                 Options.PeerObfuscationOptions.ListenPort,
                                 Options.IncomingConnectionOptions,
-                                obfuscated: true);
+                                obfuscated: true,
+                                diagnosticFactory: Diagnostic);
                             ObfuscatedListener.Accepted += ListenerHandler.HandleConnection;
                             ObfuscatedListener.Error += ListenerHandler.HandleError;
                             ObfuscatedListener.Start(Options.ListenBacklog);
@@ -4242,7 +4279,8 @@ namespace Soulseek
                     },
                     cancellationToken: linkedCancellationToken);
 
-                // ensure the losing tasks don't raise an unbserved exception by attaching a continuation that will observe them with Forget()
+                // Any participant can fault after another task wins the race. Keep every
+                // participant observed while preserving exceptions for the explicit awaits below.
                 readTask.Forget();
                 disconnectedTaskCancellationSource.Task.Forget();
                 download.RemoteTaskCompletionSource.Task.Forget();
@@ -4988,8 +5026,17 @@ namespace Soulseek
                 var listenPortChanged = patch.ListenPort.HasValue && patch.ListenPort.Value != Options.ListenPort;
                 var listenBacklogChanged = patch.ListenBacklog.HasValue && patch.ListenBacklog.Value != Options.ListenBacklog;
                 var incomingConnectionOptionsChanged = patch.IncomingConnectionOptions != null && patch.IncomingConnectionOptions != Options.IncomingConnectionOptions;
+                var peerObfuscationOptionsChanged = patch.PeerObfuscationOptions != null &&
+                    (patch.PeerObfuscationOptions.Enabled != Options.PeerObfuscationOptions.Enabled ||
+                     patch.PeerObfuscationOptions.ListenPort != Options.PeerObfuscationOptions.ListenPort ||
+                     patch.PeerObfuscationOptions.Type != Options.PeerObfuscationOptions.Type ||
+                     patch.PeerObfuscationOptions.AdvertiseRegularPort != Options.PeerObfuscationOptions.AdvertiseRegularPort ||
+                     patch.PeerObfuscationOptions.PreferOutbound != Options.PeerObfuscationOptions.PreferOutbound);
+                var peerObfuscationListenerChanged = peerObfuscationOptionsChanged &&
+                    (patch.PeerObfuscationOptions.Enabled != Options.PeerObfuscationOptions.Enabled ||
+                     patch.PeerObfuscationOptions.ListenPort != Options.PeerObfuscationOptions.ListenPort);
 
-                if (enableListenerChanged || listenAddressChanged || listenPortChanged || listenBacklogChanged || incomingConnectionOptionsChanged)
+                if (enableListenerChanged || listenAddressChanged || listenPortChanged || listenBacklogChanged || incomingConnectionOptionsChanged || peerObfuscationListenerChanged)
                 {
                     var wasListening = Listener?.Listening ?? false;
 
@@ -5003,22 +5050,35 @@ namespace Soulseek
                         listenIPAddress: patch.ListenIPAddress,
                         listenPort: patch.ListenPort,
                         listenBacklog: patch.ListenBacklog,
-                        incomingConnectionOptions: patch.IncomingConnectionOptions);
+                        incomingConnectionOptions: patch.IncomingConnectionOptions,
+                        peerObfuscationOptions: patch.PeerObfuscationOptions);
 
                     if (wasListening && Options.EnableListener)
                     {
-                        Listener = new Listener(Options.ListenIPAddress, Options.ListenPort, Options.IncomingConnectionOptions);
+                        // a dedicated obfuscation listen port of 0 means obfuscated connections share the regular
+                        // listener's single bound port; the shared listener determines plain-vs-obfuscated per
+                        // connection instead of a second listener with a static obfuscated flag.
+                        var sharedObfuscation = Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort == 0;
+
+                        Listener = new Listener(
+                            Options.ListenIPAddress,
+                            Options.ListenPort,
+                            Options.IncomingConnectionOptions,
+                            tcpListener: PrimaryListenerTcpListenerOverride,
+                            obfuscationSniffingEnabled: sharedObfuscation,
+                            diagnosticFactory: Diagnostic);
                         Listener.Accepted += ListenerHandler.HandleConnection;
                         Listener.Error += ListenerHandler.HandleError;
                         Listener.Start(Options.ListenBacklog);
 
-                        if (Options.PeerObfuscationOptions.Enabled)
+                        if (Options.PeerObfuscationOptions.Enabled && Options.PeerObfuscationOptions.ListenPort != 0)
                         {
                             ObfuscatedListener = new Listener(
                                 Options.ListenIPAddress,
                                 Options.PeerObfuscationOptions.ListenPort,
                                 Options.IncomingConnectionOptions,
-                                obfuscated: true);
+                                obfuscated: true,
+                                diagnosticFactory: Diagnostic);
                             ObfuscatedListener.Accepted += ListenerHandler.HandleConnection;
                             ObfuscatedListener.Error += ListenerHandler.HandleError;
                             ObfuscatedListener.Start(Options.ListenBacklog);
@@ -5043,6 +5103,7 @@ namespace Soulseek
                     peerConnectionOptions: patch.PeerConnectionOptions,
                     transferConnectionOptions: patch.TransferConnectionOptions,
                     incomingConnectionOptions: patch.IncomingConnectionOptions,
+                    peerObfuscationOptions: patch.PeerObfuscationOptions,
                     distributedConnectionOptions: patch.DistributedConnectionOptions,
                     userEndPointCache: patch.UserEndPointCache,
                     searchResponseResolver: patch.SearchResponseResolver,
@@ -5051,7 +5112,8 @@ namespace Soulseek
                     directoryContentsResolver: patch.DirectoryContentsResolver,
                     userInfoResolver: patch.UserInfoResolver,
                     enqueueDownload: patch.EnqueueDownload,
-                    placeInQueueResolver: patch.PlaceInQueueResolver);
+                    placeInQueueResolver: patch.PlaceInQueueResolver,
+                    advertisedListenPort: patch.AdvertisedListenPort);
 
                 if (maximumUploadSpeedChanged)
                 {
@@ -5537,15 +5599,24 @@ namespace Soulseek
 
         private SetListenPortCommand CreateSetListenPortCommand()
         {
+            var advertisedListenPort = Options.AdvertisedListenPort ?? Options.ListenPort;
+
             if (!Options.PeerObfuscationOptions.Enabled)
             {
-                return new SetListenPortCommand(Options.ListenPort);
+                return new SetListenPortCommand(advertisedListenPort);
             }
 
+            // A configured obfuscation listen port of 0 means obfuscated connections share the
+            // regular listen port (see PeerObfuscationOptions remarks); the server needs the
+            // actual reachable port number to advertise to other peers, not the sentinel.
+            var obfuscatedPort = Options.PeerObfuscationOptions.ListenPort == 0
+                ? advertisedListenPort
+                : Options.PeerObfuscationOptions.ListenPort;
+
             return new SetListenPortCommand(
-                Options.ListenPort,
+                advertisedListenPort,
                 Options.PeerObfuscationOptions.Type,
-                Options.PeerObfuscationOptions.ListenPort);
+                obfuscatedPort);
         }
 
         private async Task SendRoomMessageInternalAsync(string roomName, string message, CancellationToken cancellationToken)
@@ -5850,7 +5921,8 @@ namespace Soulseek
                     writeTask = Task.CompletedTask;
                 }
 
-                // ensure the losing tasks don't raise an unobserved exception by attaching a continuation that will observe them with Forget()
+                // The disconnect path can win while the canceled socket write faults later.
+                // Observe both participants without changing which exception is propagated.
                 writeTask.Forget();
                 disconnectedTaskCancellationSource.Task.Forget();
 

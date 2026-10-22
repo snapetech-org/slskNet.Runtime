@@ -109,6 +109,11 @@ namespace Soulseek
         ///     The delegate used to resolve the <see cref="int"/> response for an incoming request.
         /// </param>
         /// <param name="raiseEventsAsynchronously">(Experimental!) Raise events asynchronously to improve parallelism.</param>
+        /// <param name="advertisedListenPort">
+        ///     The port to advertise to the Soulseek server, or <see langword="null"/> to advertise
+        ///     <paramref name="listenPort"/>. This is useful when a transparent NAT or VPN forward
+        ///     maps a public port to a different local listener port.
+        /// </param>
         /// <exception cref="ArgumentOutOfRangeException">
         ///     Thrown when the value supplied for <paramref name="listenPort"/> is not between 1024 and 65535.
         /// </exception>
@@ -149,7 +154,8 @@ namespace Soulseek
             Func<string, IPEndPoint, Task<UserInfo>> userInfoResolver = null,
             Func<string, IPEndPoint, string, Task> enqueueDownload = null,
             Func<string, IPEndPoint, string, Task<int?>> placeInQueueResolver = null,
-            bool raiseEventsAsynchronously = false)
+            bool raiseEventsAsynchronously = false,
+            int? advertisedListenPort = null)
         {
             EnableListener = enableListener;
             this.listenIPAddress = (listenIPAddress ?? IPAddress.Any).Snapshot();
@@ -166,6 +172,13 @@ namespace Soulseek
             if (ListenBacklog < 128)
             {
                 throw new ArgumentOutOfRangeException(nameof(listenBacklog), $"Must be greater than or equal to 128");
+            }
+
+            AdvertisedListenPort = advertisedListenPort;
+
+            if (AdvertisedListenPort is < 1024 or > IPEndPoint.MaxPort)
+            {
+                throw new ArgumentOutOfRangeException(nameof(advertisedListenPort), $"Must be between 1024 and {IPEndPoint.MaxPort}");
             }
 
             EnableDistributedNetwork = enableDistributedNetwork;
@@ -342,6 +355,13 @@ namespace Soulseek
         public int ListenPort { get; }
 
         /// <summary>
+        ///     Gets the port advertised to the Soulseek server, or <see langword="null"/> when the
+        ///     local <see cref="ListenPort"/> is advertised. The local listener is not rebound when
+        ///     this value differs.
+        /// </summary>
+        public int? AdvertisedListenPort { get; }
+
+        /// <summary>
         ///     Gets the number of allowed concurrent downloads. (Default = int.MaxValue).
         /// </summary>
         public int MaximumConcurrentDownloads { get; }
@@ -480,7 +500,8 @@ namespace Soulseek
                 directoryContentsResolver: patch.DirectoryContentsResolver,
                 userInfoResolver: patch.UserInfoResolver,
                 enqueueDownload: patch.EnqueueDownload,
-                placeInQueueResolver: patch.PlaceInQueueResolver);
+                placeInQueueResolver: patch.PlaceInQueueResolver,
+                advertisedListenPort: patch.AdvertisedListenPort);
         }
 
         /// <summary>
@@ -529,6 +550,10 @@ namespace Soulseek
         /// <param name="placeInQueueResolver">
         ///     The delegate used to resolve the <see cref="int"/> response for an incoming request.
         /// </param>
+        /// <param name="advertisedListenPort">
+        ///     The port to advertise to the Soulseek server, or <see langword="null"/> to retain the
+        ///     current advertised port.
+        /// </param>
         /// <returns>The cloned instance.</returns>
         internal SoulseekClientOptions With(
             bool? enableListener = null,
@@ -557,7 +582,8 @@ namespace Soulseek
             Func<string, IPEndPoint, int, string, Task<IEnumerable<Directory>>> directoryContentsResolver = null,
             Func<string, IPEndPoint, Task<UserInfo>> userInfoResolver = null,
             Func<string, IPEndPoint, string, Task> enqueueDownload = null,
-            Func<string, IPEndPoint, string, Task<int?>> placeInQueueResolver = null)
+            Func<string, IPEndPoint, string, Task<int?>> placeInQueueResolver = null,
+            int? advertisedListenPort = null)
         {
             return new SoulseekClientOptions(
                 enableListener: enableListener ?? EnableListener,
@@ -593,7 +619,8 @@ namespace Soulseek
                 userInfoResolver: userInfoResolver ?? UserInfoResolver,
                 enqueueDownload: enqueueDownload ?? EnqueueDownload,
                 placeInQueueResolver: placeInQueueResolver ?? PlaceInQueueResolver,
-                raiseEventsAsynchronously: RaiseEventsAsynchronously);
+                raiseEventsAsynchronously: RaiseEventsAsynchronously,
+                advertisedListenPort: advertisedListenPort ?? AdvertisedListenPort);
         }
     }
 }
