@@ -1,4 +1,4 @@
-﻿// <copyright file="ConnectToPeerResponse.cs" company="JP Dillingham">
+// <copyright file="ConnectToPeerResponse.cs" company="JP Dillingham">
 //     Copyright (c) JP Dillingham.
 //
 //     This program is free software: you can redistribute it and/or modify
@@ -174,6 +174,11 @@ namespace Soulseek.Messaging.Messages
                 {
                     ProtocolValueValidator.ValidateAdvertisedPort(obfuscatedPort, "connect-to-peer obfuscated");
                 }
+            }
+
+            if (SoulseekClient.ReportUnreadMessageData && reader.HasMoreData)
+            {
+                Diagnostics.GlobalDiagnostic.Warning($"Message reader for {nameof(MessageCode.Server.ConnectToPeer)} finalized with {reader.Remaining} unread bytes");
             }
 
             return new ConnectToPeerResponse(username, type, ipAddress, port, token, isPrivileged, obfuscationType, obfuscatedPort);

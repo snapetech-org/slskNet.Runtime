@@ -1,4 +1,4 @@
-﻿// <copyright file="ListenerHandler.cs" company="JP Dillingham">
+// <copyright file="ListenerHandler.cs" company="JP Dillingham">
 //     Copyright (c) JP Dillingham.
 //
 //     This program is free software: you can redistribute it and/or modify
@@ -67,6 +67,11 @@ namespace Soulseek.Network
         /// <param name="connection">The accepted connection.</param>
         public async void HandleConnection(object sender, IConnection connection)
             => await HandleConnectionAsync(sender, connection).ConfigureAwait(false);
+
+        public void HandleError(object sender, Exception exception)
+        {
+            Diagnostic.Warning($"Failed to establish an incoming connection: {exception.Message}", exception);
+        }
 
         internal async System.Threading.Tasks.Task HandleConnectionAsync(object sender, IConnection connection)
         {

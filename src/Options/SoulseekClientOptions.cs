@@ -30,6 +30,7 @@ namespace Soulseek
     using System.Collections.Generic;
     using System.Linq;
     using System.Net;
+    using System.Net.Sockets;
     using System.Threading.Tasks;
     using Soulseek.Diagnostics;
     using Soulseek.Messaging.Messages;
@@ -59,6 +60,7 @@ namespace Soulseek
         /// <param name="enableListener">A value indicating whether to listen for incoming connections.</param>
         /// <param name="listenIPAddress">The IP address on which to listen for incoming connections.</param>
         /// <param name="listenPort">The port on which to listen for incoming connections.</param>
+        /// <param name="listenBacklog">The maximum size of the listener backlog.</param>
         /// <param name="enableDistributedNetwork">A value indicating whether to establish distributed network connections.</param>
         /// <param name="acceptDistributedChildren">A value indicating whether to accept distributed child connections.</param>
         /// <param name="distributedChildLimit">The number of allowed distributed children.</param>
@@ -117,6 +119,7 @@ namespace Soulseek
             bool enableListener = true,
             IPAddress listenIPAddress = null,
             int listenPort = 50000,
+            int listenBacklog = (int)SocketOptionName.MaxConnections,
             bool enableDistributedNetwork = true,
             bool acceptDistributedChildren = true,
             int distributedChildLimit = 25,
@@ -156,6 +159,13 @@ namespace Soulseek
             if (ListenPort < 1024 || ListenPort > IPEndPoint.MaxPort)
             {
                 throw new ArgumentOutOfRangeException(nameof(listenPort), $"Must be between 1024 and {IPEndPoint.MaxPort}");
+            }
+
+            ListenBacklog = listenBacklog;
+
+            if (ListenBacklog < 128)
+            {
+                throw new ArgumentOutOfRangeException(nameof(listenBacklog), $"Must be greater than or equal to 128");
             }
 
             EnableDistributedNetwork = enableDistributedNetwork;
@@ -317,6 +327,11 @@ namespace Soulseek
         public ConnectionOptions IncomingConnectionOptions { get; }
 
         /// <summary>
+        ///     Gets the maximum size of the listener backlog. (Default = int.MaxValue).
+        /// </summary>
+        public int ListenBacklog { get; }
+
+        /// <summary>
         ///     Gets the IP Address on which to listen for incoming connections. (Default = IPAddress.Any/"0.0.0.0").
         /// </summary>
         public IPAddress ListenIPAddress => listenIPAddress.Snapshot();
@@ -442,6 +457,7 @@ namespace Soulseek
                 enableListener: patch.EnableListener,
                 listenIPAddress: patch.ListenIPAddress,
                 listenPort: patch.ListenPort,
+                listenBacklog: patch.ListenBacklog,
                 enableDistributedNetwork: patch.EnableDistributedNetwork,
                 acceptDistributedChildren: patch.AcceptDistributedChildren,
                 distributedChildLimit: patch.DistributedChildLimit,
@@ -473,6 +489,7 @@ namespace Soulseek
         /// <param name="enableListener">A value indicating whether to listen for incoming connections.</param>
         /// <param name="listenIPAddress">The IP address on which to listen for incoming connections.</param>
         /// <param name="listenPort">The port on which to listen for incoming connections.</param>
+        /// <param name="listenBacklog">The maximum size of the listener backlog.</param>
         /// <param name="enableDistributedNetwork">A value indicating whether to establish distributed network connections.</param>
         /// <param name="acceptDistributedChildren">A value indicating whether to accept distributed child connections.</param>
         /// <param name="distributedChildLimit">The number of allowed distributed children.</param>
@@ -517,6 +534,7 @@ namespace Soulseek
             bool? enableListener = null,
             IPAddress listenIPAddress = null,
             int? listenPort = null,
+            int? listenBacklog = null,
             bool? enableDistributedNetwork = null,
             bool? acceptDistributedChildren = null,
             int? distributedChildLimit = null,
@@ -545,9 +563,11 @@ namespace Soulseek
                 enableListener: enableListener ?? EnableListener,
                 listenIPAddress: listenIPAddress ?? ListenIPAddress,
                 listenPort: listenPort ?? ListenPort,
+                listenBacklog: listenBacklog ?? ListenBacklog,
                 enableDistributedNetwork: enableDistributedNetwork ?? EnableDistributedNetwork,
                 acceptDistributedChildren: acceptDistributedChildren ?? AcceptDistributedChildren,
                 distributedChildLimit: distributedChildLimit ?? DistributedChildLimit,
+                maximumConcurrentSearches: MaximumConcurrentSearches,
                 maximumConcurrentUploads: MaximumConcurrentUploads,
                 maximumUploadSpeed: maximumUploadSpeed ?? MaximumUploadSpeed,
                 maximumConcurrentDownloads: MaximumConcurrentDownloads,
@@ -572,7 +592,8 @@ namespace Soulseek
                 directoryContentsResolver: directoryContentsResolver ?? DirectoryContentsResolver,
                 userInfoResolver: userInfoResolver ?? UserInfoResolver,
                 enqueueDownload: enqueueDownload ?? EnqueueDownload,
-                placeInQueueResolver: placeInQueueResolver ?? PlaceInQueueResolver);
+                placeInQueueResolver: placeInQueueResolver ?? PlaceInQueueResolver,
+                raiseEventsAsynchronously: RaiseEventsAsynchronously);
         }
     }
 }

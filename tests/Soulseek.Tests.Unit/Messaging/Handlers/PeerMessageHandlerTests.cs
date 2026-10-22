@@ -465,7 +465,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(defaultResponse.ToByteArray())), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(defaultResponse.ToByteArray())), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -483,7 +483,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(defaultResponse.ToByteArray())), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(defaultResponse.ToByteArray())), It.IsAny<CancellationToken>()), Times.Once);
             mocks.Diagnostic.Verify(m => m.Warning(It.Is<string>(s => s.ContainsInsensitive("Failed to resolve user info response")), It.IsAny<InvalidOperationException>()), Times.Once);
         }
 
@@ -501,7 +501,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Once);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Diagnostic")]
@@ -547,7 +547,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Once);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -576,7 +576,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             Assert.Null(ex);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Never);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Never);
         }
 
         [Trait("Category", "Message")]
@@ -601,7 +601,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             Assert.Null(ex);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Never);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Never);
         }
 
         [Trait("Category", "SearchRequest")]
@@ -631,7 +631,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
             Assert.False(stream.CanRead);
         }
@@ -656,8 +656,8 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()))
-                .Callback<long, System.IO.Stream, Func<int, CancellationToken, Task<int>>, Action<int, int, int>, CancellationToken?>((length, output, governor, reporter, cancellationToken) =>
+                    It.IsAny<CancellationToken>()))
+                .Callback<long, System.IO.Stream, Func<int, CancellationToken, Task<int>>, Action<int, int, int>, CancellationToken>((length, output, governor, reporter, cancellationToken) =>
                 {
                     writtenLength = length;
                     writtenBytes = ReadStream(output, length);
@@ -695,7 +695,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()))
+                    It.IsAny<CancellationToken>()))
                 .Returns(Task.FromException(new ConnectionWriteException("failed")));
 
             var message = new MessageBuilder()
@@ -765,7 +765,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             Assert.Null(ex);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Never);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Never);
 
             mocks.Diagnostic.Verify(m => m.Warning(It.Is<string>(s => s.ContainsInsensitive("error resolving search response")), expectedEx), Times.Once);
         }
@@ -796,7 +796,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), null), Times.Once);
+                m => m.WriteAsync(It.Is<byte[]>(o => o.Matches(response.ToByteArray())), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "BrowseRequest")]
@@ -813,7 +813,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             var ex = Record.Exception(() => handler.HandleMessageRead(mocks.PeerConnection.Object, message));
 
             Assert.Null(ex);
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken?>()), Times.Never);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Never);
             mocks.Diagnostic.Verify(m => m.Info(It.Is<string>(s => s.ContainsInsensitive("Share contents sent"))), Times.Never);
         }
 
@@ -844,7 +844,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
             Assert.False(stream.CanRead);
         }
@@ -869,8 +869,8 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()))
-                .Callback<long, System.IO.Stream, Func<int, CancellationToken, Task<int>>, Action<int, int, int>, CancellationToken?>((length, output, governor, reporter, cancellationToken) =>
+                    It.IsAny<CancellationToken>()))
+                .Callback<long, System.IO.Stream, Func<int, CancellationToken, Task<int>>, Action<int, int, int>, CancellationToken>((length, output, governor, reporter, cancellationToken) =>
                 {
                     writtenLength = length;
                     writtenBytes = ReadStream(output, length);
@@ -902,7 +902,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
                     It.IsAny<System.IO.Stream>(),
                     It.IsAny<Func<int, CancellationToken, Task<int>>>(),
                     It.IsAny<Action<int, int, int>>(),
-                    It.IsAny<CancellationToken?>()))
+                    It.IsAny<CancellationToken>()))
                 .Returns(Task.FromException(new ConnectionWriteException("failed")));
 
             var message = new MessageBuilder()
@@ -982,7 +982,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, msg);
 
             mocks.PeerConnection.Verify(
-                m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(response.ToByteArray())), null), Times.Once);
+                m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(response.ToByteArray())), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Diagnostic")]
@@ -1021,7 +1021,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             Assert.Contains(messages, m => m.IndexOf("Failed to send directory contents response", StringComparison.InvariantCultureIgnoreCase) > -1);
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken?>()), Times.Never);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Trait("Category", "Diagnostic")]
@@ -1058,7 +1058,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken?>()), Times.Once);
+                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1076,7 +1076,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken?>()), Times.Never);
+                .Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Trait("Category", "Diagnostic")]
@@ -1110,7 +1110,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expected)), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expected)), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1128,7 +1128,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken?>()), Times.Once);
+                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1146,7 +1146,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken?>()), Times.Once);
+                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1164,7 +1164,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken?>()), Times.Never);
+                .Verify(m => m.WriteAsync(It.IsAny<IOutgoingMessage>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Trait("Category", "Message")]
@@ -1182,7 +1182,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
             mocks.PeerConnection
-                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken?>()), Times.Never);
+                .Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, placeInQueue).ToByteArray())), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Trait("Category", "Diagnostic")]
@@ -1220,7 +1220,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, -1).ToByteArray())), It.IsAny<CancellationToken?>()), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(new PlaceInQueueResponse(filename, -1).ToByteArray())), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1236,8 +1236,8 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedTransferResponse)), null), Times.Once);
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedQueueFailedResponse)), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedTransferResponse)), CancellationToken.None), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedQueueFailedResponse)), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1253,8 +1253,8 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             handler.HandleMessageRead(mocks.PeerConnection.Object, message);
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedTransferResponse)), null), Times.Once);
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedQueueFailedResponse)), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedTransferResponse)), CancellationToken.None), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(o => Encoding.UTF8.GetString(o.ToByteArray()) == Encoding.UTF8.GetString(expectedQueueFailedResponse)), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "Message")]
@@ -1324,7 +1324,7 @@ namespace Soulseek.Tests.Unit.Messaging.Handlers
 
             var expected = new TransferResponse(token, "Cancelled").ToByteArray();
 
-            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(expected)), null), Times.Once);
+            mocks.PeerConnection.Verify(m => m.WriteAsync(It.Is<IOutgoingMessage>(msg => msg.ToByteArray().Matches(expected)), CancellationToken.None), Times.Once);
         }
 
         [Trait("Category", "HandleMessageReceived")]

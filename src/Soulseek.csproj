@@ -39,11 +39,11 @@
   <PropertyGroup>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>slskNet.Runtime</PackageId>
-    <Version>10.0.0-slsknet.1</Version>
+    <Version>10.0.3</Version>
     <Authors>JP Dillingham; slskdN Team</Authors>
     <Product>slskNet.Runtime</Product>
     <PackageProjectUrl>https://github.com/snapetech/slskNet.Runtime</PackageProjectUrl>
-    <PackageLicense>https://github.com/snapetech/slskNet.Runtime/blob/slsknet-runtime-main/LICENSE</PackageLicense>
+    <PackageLicense>https://github.com/snapetech-org/slskNet.Runtime/blob/main/LICENSE</PackageLicense>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <Description>A slskdN-maintained .NET Standard runtime transport library for the Soulseek network.</Description>
     <Copyright>Copyright (c) JP Dillingham and slskdN Team</Copyright>
@@ -64,8 +64,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.31.0.145097">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="StyleCop.Analyzers" Version="1.1.118">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
