@@ -3,7 +3,19 @@ name: Windows Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: Required workflow action
+        type: choice
+        options: [ci]
+        required: true
+      runner_pool:
+        description: Required private JIT runner pool
+        type: choice
+        options: [private]
+        required: true
   pull_request:
+    types: [labeled]
     paths:
       - "**/*.cs"
       - "**/*.csproj"
@@ -15,6 +27,27 @@ permissions:
 
 jobs:
   dotnet:
+    # Keep external fork code off trusted JIT groups until its isolated route is authorized.
+    if: >-
+      (
+        (
+        github.event_name == 'pull_request' &&
+        github.event.action == 'labeled' &&
+        (github.event.label.name == 'action:ci' || github.event.label.name == 'pool:private') &&
+        contains(github.event.pull_request.labels.*.name, 'action:ci') &&
+        contains(github.event.pull_request.labels.*.name, 'pool:private') &&
+        github.event.pull_request.head.repo.full_name == github.repository
+        ) ||
+        (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' &&
+        inputs.action == 'ci' &&
+        inputs.runner_pool == 'private'
+        )
+      ) &&
+      (
+        github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+      )
     runs-on: ${{ fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","packer-windows","ng-shared-main-slsknet.runtime","ng-main-run-{0}","gha-{0}-dotnet"]}}', github.run_id)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
