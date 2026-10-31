@@ -1,6 +1,13 @@
+# packer-windows-jit-v1
 # ng-runner-policy: private-jit-only-v1
 name: Windows Smoke
 
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') &&
+      format('action:{0}:pool:{1}:tag:{2}', inputs.action || 'smoke', inputs.runner_pool || 'private', github.ref_name) ||
+      github.event_name == 'workflow_dispatch' &&
+      format('action:{0}:pool:{1}', inputs.action || 'smoke', inputs.runner_pool || 'private') || format('action:ci:pool:private') }}
 on:
   workflow_dispatch:
     inputs:
@@ -48,7 +55,7 @@ jobs:
       (
         github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
       )
-    runs-on: ${{ fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","packer-windows","ng-shared-main-slsknet.runtime","ng-main-run-{0}","gha-{0}-dotnet"]}}', github.run_id)) }}
+    runs-on: ${{ fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","on-demand","packer-windows","slskNet.Runtime","gha-{0}-dotnet"]}}', github.run_id)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
