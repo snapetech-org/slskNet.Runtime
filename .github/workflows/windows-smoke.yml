@@ -2,8 +2,21 @@
 # packer-windows-jit-v1
 name: Windows Smoke
 
+run-name: ${{ format('action:{0}:pool:{1}', inputs.action_tag, inputs.runner_pool_tag) }}
+
 on:
   workflow_dispatch:
+    inputs:
+      action_tag:
+        description: Action to run
+        required: true
+        type: choice
+        options: [ci]
+      runner_pool_tag:
+        description: Runner pool
+        required: true
+        type: choice
+        options: [private]
   pull_request:
     paths:
       - "**/*.cs"
@@ -16,6 +29,7 @@ permissions:
 
 jobs:
   dotnet:
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'snapetech' && github.ref == 'refs/heads/main' && inputs.action_tag == 'ci' && inputs.runner_pool_tag == 'private'
     runs-on: ${{ fromJSON(format('{{"group":"packer-windows","labels":["self-hosted","Windows","X64","on-demand","packer-windows","slskNet.Runtime","gha-{0}-dotnet"]}}', github.run_id)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
