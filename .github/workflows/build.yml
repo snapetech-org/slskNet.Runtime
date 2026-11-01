@@ -5,7 +5,7 @@ name: Build and test
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number != '' &&
       format('owner-pr:{0}:{1}:{2}:action:{3}:pool:{4}', inputs.pr_number, inputs.pr_sha, inputs.target_run_id, inputs.action_tag, inputs.runner_pool_tag) ||
-      format('action:{0}:pool:{1}', inputs.action || inputs.action_tag || 'ci', inputs.runner_pool || inputs.runner_pool_tag || 'private') }}
+      format('action:{0}:pool:{1}', inputs.action_tag || 'ci', inputs.runner_pool_tag || 'private') }}
 
 on:
   pull_request_target:
@@ -13,30 +13,16 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      action:
-        description: Private JIT action
-        type: choice
-        options: [ci]
-        required: false
-        default: ci
-      runner_pool:
-        description: Private JIT runner pool
-        type: choice
-        options: [private]
-        required: false
-        default: private
       action_tag:
-        description: Action tag set by the private owner-PR dispatcher
+        description: Required workflow action tag
         type: choice
         options: [ci]
-        required: false
-        default: ci
+        required: true
       runner_pool_tag:
-        description: Private JIT pool tag set by the dispatcher
+        description: Required private JIT runner pool tag
         type: choice
         options: [private]
-        required: false
-        default: private
+        required: true
       pr_number:
         description: Trusted owner PR number set by the metadata-only dispatcher
         type: string
@@ -66,7 +52,6 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.action == 'ci' && inputs.runner_pool == 'private' &&
       inputs.action_tag == 'ci' && inputs.runner_pool_tag == 'private' &&
       ((github.actor == 'snapetech' && inputs.pr_number == '' && inputs.pr_sha == '' && inputs.target_run_id == '' && inputs.pr_author == '' && inputs.pr_repository == '') ||
        (github.actor == 'github-actions[bot]' && inputs.pr_number != '' && inputs.pr_sha != '' && inputs.target_run_id != '' && inputs.pr_author == 'snapetech' && inputs.pr_repository == github.repository))
@@ -159,8 +144,6 @@ jobs:
           payload = json.dumps({
               "ref": "main",
               "inputs": {
-                  "action": "ci",
-                  "runner_pool": "private",
                   "action_tag": "ci",
                   "runner_pool_tag": "private",
                   "pr_number": number,
@@ -204,7 +187,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_SHA: ${{ inputs.pr_sha }}
-          VALIDATION_RESULT: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
+          VALIDATION_RESULT: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || contains(needs.*.result, 'skipped') && 'failure' || 'success' }}
           VALIDATION_RUN_ID: ${{ github.run_id }}
         run: |
           python3 - <<'OWNER_PR_REPORTER_PY'
