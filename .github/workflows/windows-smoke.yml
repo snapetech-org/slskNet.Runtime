@@ -196,7 +196,7 @@ jobs:
       inputs.pr_author == 'snapetech' && inputs.pr_repository == github.repository &&
       inputs.action_tag == 'ci' && inputs.runner_pool_tag == 'private' &&
       github.actor == 'github-actions[bot]'
-    runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-packer","ng-main-run-{0}","gha-{0}-owner-pr-reporter"]}}', github.run_id)) }}
+    runs-on: ${{ fromJSON(format('{{"group":"ng-shared-main-jit","labels":["self-hosted","linux","x64","ng-shared-main-slsknet.runtime","ng-main-run-{0}","gha-{0}-owner-pr-reporter"]}}', github.run_id)) }}
     permissions:
       checks: write
       contents: none
