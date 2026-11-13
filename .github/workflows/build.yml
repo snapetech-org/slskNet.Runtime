@@ -65,11 +65,19 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET SDKs
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
+          dotnet-version: 11.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: examples/Web/web/package-lock.json
+
+      - name: Update npm
+        run: npm install --global npm@12.2.2
 
       - name: Restore
         run: dotnet restore slskNet.Runtime.sln
@@ -77,8 +85,29 @@ jobs:
       - name: Build
         run: dotnet build slskNet.Runtime.sln --configuration Release --no-restore
 
+      - name: Install web dependencies
+        working-directory: examples/Web/web
+        run: npm ci
+
+      - name: Build web frontend
+        working-directory: examples/Web/web
+        run: npm run build
+
       - name: Run unit tests
         run: dotnet test tests/Soulseek.Tests.Unit/Soulseek.Tests.Unit.csproj --configuration Release --no-build --no-restore
+
+      - name: Pack runtime
+        run: dotnet pack src/Soulseek.csproj --configuration Release --no-build --no-restore --output artifacts/packages
+
+      - name: Upload runtime packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: slskNet.Runtime-${{ github.sha }}
+          path: |
+            artifacts/packages/slskNet.Runtime.10.0.4.nupkg
+            artifacts/packages/slskNet.Runtime.10.0.4.snupkg
+          if-no-files-found: error
+          retention-days: 14
 
   dispatch-owner-pr:
     name: Dispatch trusted owner PR validation
